@@ -9,6 +9,8 @@ const OTPVerifyPage = () => {
   const location = useLocation();
   const email = location.state?.email;
   const type = location.state?.type || 'signup';
+  const otpHint = location.state?.otpHint;
+  const emailFailed = location.state?.emailFailed;
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
@@ -108,10 +110,21 @@ const OTPVerifyPage = () => {
           </div>
           <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Verify Code</h2>
           <p className="mt-3 text-gray-500">
-            Enter the 6-digit code sent to <br />
+            {emailFailed
+              ? <>Email delivery unavailable. Copy the code below.<br /></>
+              : <>Enter the 6-digit code sent to <br /></>}
             <span className="font-bold text-gray-900">{email}</span>
           </p>
         </div>
+
+        {/* Fallback OTP banner when email is unavailable (e.g. HF Spaces) */}
+        {emailFailed && otpHint && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 text-center">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-1">⚠️ Email Unavailable — Your OTP Code</p>
+            <p className="text-3xl font-mono font-black text-amber-800 tracking-[0.3em]">{otpHint}</p>
+            <p className="text-xs text-amber-600 mt-1">Copy this code and paste it in the boxes below</p>
+          </div>
+        )}
 
         <form className="mt-8 space-y-6" onSubmit={handleVerify}>
           <div className="flex justify-between gap-2">

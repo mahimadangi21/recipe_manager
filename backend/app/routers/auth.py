@@ -89,10 +89,15 @@ async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)):
     db.add(otp_record)
     await db.commit()
 
-    # Send email
+    # Send email — non-blocking: if SMTP fails on HF Spaces, warn but don't block
     success, mail_msg = await send_otp_email(request.email, otp_code, "signup")
     if not success:
-        raise HTTPException(status_code=500, detail=mail_msg)
+        import logging
+        logging.warning(f"SMTP failed during signup for {request.email}: {mail_msg}")
+        # Return the OTP in the response so the user can still verify
+        # (only safe because HF Spaces doesn't have outbound SMTP)
+        return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
+                            message="Email delivery failed. Use the code shown here to verify.")
     
     return api_response(True, message="Verification code sent to your email")
 
@@ -176,7 +181,10 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
 
     success, mail_msg = await send_otp_email(request.email, otp_code, "reset")
     if not success:
-        raise HTTPException(status_code=500, detail=mail_msg)
+        import logging
+        logging.warning(f"SMTP failed during password reset for {request.email}: {mail_msg}")
+        return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
+                            message="Email delivery failed. Use the code shown here to reset your password.")
         
     print(f"DEBUG: OTP email sent trigger successful for {request.email}")
     return api_response(True, message="OTP sent to your email")

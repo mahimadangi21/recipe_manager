@@ -29,13 +29,23 @@ const RegisterPage = () => {
 
   const onSubmit = async (data) => {
     try {
-      await signup({
+      const result = await signup({
         username: data.username,
         email: data.email,
         password: data.password
       });
-      toast.success('Verification code sent to your email!');
-      navigate('/verify-otp', { state: { email: data.email, type: 'signup' } });
+      // result may contain otp_hint when SMTP is unavailable (e.g. HF Spaces)
+      if (result?.email_failed) {
+        toast('📧 Email unavailable. Your OTP code is shown on the next page.', { icon: '⚠️', duration: 6000 });
+      } else {
+        toast.success('Verification code sent to your email!');
+      }
+      navigate('/verify-otp', { state: { 
+        email: data.email, 
+        type: 'signup',
+        otpHint: result?.otp_hint,
+        emailFailed: result?.email_failed 
+      } });
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Registration failed');
     }
