@@ -1,11 +1,13 @@
 # ---- Stage 1: Build the React frontend ----
-FROM node:20-slim AS frontend-builder
+FROM node:20 AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install dependencies first (cached layer)
+# Copy package files
 COPY frontend/package*.json ./
-RUN npm ci
+
+# Use npm install instead of npm ci to handle cross-platform lockfile differences
+RUN npm install
 
 # Copy source and build
 COPY frontend/ ./
@@ -13,22 +15,13 @@ ENV VITE_API_URL="/api/v1"
 RUN npm run build
 
 # ---- Stage 2: Build the Python backend ----
-FROM python:3.11-slim AS backend
+FROM python:3.11 AS backend
 
 WORKDIR /app
 
-# Install system build tools needed for compiling Python packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    libpq-dev \
-    libffi-dev \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies using the production requirements (no PostgreSQL/dev packages)
+COPY requirements-prod.txt .
+RUN pip install --no-cache-dir -r requirements-prod.txt
 
 # Copy backend source code
 COPY backend/ ./
