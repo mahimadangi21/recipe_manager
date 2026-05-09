@@ -1,3 +1,11 @@
+---
+title: Recipe Manager
+emoji: 🍔
+colorFrom: yellow
+colorTo: red
+sdk: docker
+app_port: 7860
+---
 # Recipe Manager Full-Stack Application
 
 A comprehensive, full-stack Recipe Manager application featuring JWT authentication, social sharing capabilities, image uploads, and customizable recipe collections.
