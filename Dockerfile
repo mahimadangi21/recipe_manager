@@ -23,15 +23,20 @@ WORKDIR /app
 COPY requirements-prod.txt .
 RUN pip install --no-cache-dir -r requirements-prod.txt
 
+# Set environment variables for the container (overrides .env file Windows paths)
+ENV DATABASE_URL="sqlite+aiosqlite:////app/data/recipes.db"
+ENV UPLOAD_DIR="/app/uploads"
+ENV CORS_ORIGINS="*"
+ENV SECRET_KEY="hf-spaces-recipe-manager-secret-key-change-me"
+ENV COOKIE_SECURE="False"
+ENV COOKIE_SAMESITE="lax"
+
 # Copy backend source code
 COPY backend/ ./
 
-# Copy the built frontend into the static folder
-RUN mkdir -p /app/static
+# Create required directories
+RUN mkdir -p /app/static /app/uploads /app/data
 COPY --from=frontend-builder /app/frontend/dist /app/static/
-
-# Create uploads directory for images
-RUN mkdir -p /app/uploads
 
 # HF Spaces requires port 7860
 EXPOSE 7860
