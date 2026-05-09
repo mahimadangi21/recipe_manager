@@ -35,7 +35,7 @@ ENV COOKIE_SAMESITE="lax"
 COPY backend/ ./
 
 # Create required directories
-RUN mkdir -p /app/static /app/uploads /app/data
+RUN mkdir -p /app/static /app/data/uploads /app/data /app/uploads
 COPY --from=frontend-builder /app/frontend/dist /app/static/
 
 # HF Spaces requires port 7860
