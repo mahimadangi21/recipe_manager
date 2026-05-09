@@ -41,5 +41,5 @@ COPY --from=frontend-builder /app/frontend/dist /app/static/
 # HF Spaces requires port 7860
 EXPOSE 7860
 
-# Start the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
+# Start the application using the PORT environment variable (required by Cloud Run)
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860} --workers 1"]
