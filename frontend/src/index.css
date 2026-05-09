@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans antialiased;
+  }
+}
+
+.swiper-pagination-bullet-active {
+  background-color: var(--color-orange-500) !important;
+}
+
+.swiper-button-next, .swiper-button-prev {
+  color: var(--color-orange-500) !important;
+  filter: drop-shadow(0 4px 3px rgb(0 0 0 / 0.07)) drop-shadow(0 2px 2px rgb(0 0 0 / 0.06)) !important;
+}
