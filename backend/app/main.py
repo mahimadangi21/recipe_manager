@@ -41,29 +41,43 @@ async def validate_db_tables():
         return True
 
 async def check_and_seed_admin():
-    """Ensure at least one admin user exists based on environment variables."""
+    """Ensure at least one admin user exists based on environment variables and matches them."""
     from app.models.user import User
     from app.services.auth_service import get_password_hash
     from sqlalchemy.future import select
     
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(User).where(User.role == "admin"))
+        result = await session.execute(select(User).where(User.email == settings.ADMIN_EMAIL))
         admin = result.scalars().first()
         
         if not admin:
-            logger.info(f"No admin found. Seeding default admin: {settings.ADMIN_EMAIL}")
-            new_admin = User(
-                username="admin",
-                email=settings.ADMIN_EMAIL,
-                hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
-                role="admin",
-                is_active=True
-            )
-            session.add(new_admin)
-            await session.commit()
-            logger.info("Admin seed checked: NEW ADMIN CREATED")
+            # Check for any admin to prevent multiple admins unless requested
+            result_any = await session.execute(select(User).where(User.role == "admin"))
+            any_admin = result_any.scalars().first()
+            
+            if not any_admin:
+                logger.info(f"No admin found. Seeding default admin: {settings.ADMIN_EMAIL}")
+                new_admin = User(
+                    username="admin",
+                    email=settings.ADMIN_EMAIL,
+                    hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
+                    role="admin",
+                    is_active=True
+                )
+                session.add(new_admin)
+                await session.commit()
+                logger.info("Admin seed checked: NEW ADMIN CREATED")
+            else:
+                logger.info(f"Admin seed checked: Admin exists but email differs. No action taken to avoid duplicates.")
         else:
-            logger.info(f"Admin seed checked: Admin already exists ({admin.email})")
+            # FORCE credentials to match ENV and UNLOCK account
+            logger.info(f"Admin seed checked: Admin '{admin.email}' exists. Synchronizing password and unlocking...")
+            admin.hashed_password = get_password_hash(settings.ADMIN_PASSWORD)
+            admin.failed_login_attempts = 0
+            admin.account_locked_until = None
+            admin.role = "admin" # Ensure role is correct
+            await session.commit()
+            logger.info("Admin seed checked: CREDENTIALS SYNCHRONIZED & ACCOUNT UNLOCKED")
 
 async def check_recipe_count():
     """Log the count of recipes and warn if empty."""
