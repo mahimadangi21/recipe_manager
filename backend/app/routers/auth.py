@@ -60,9 +60,7 @@ async def send_otp(request: OTPRequest, db: AsyncSession = Depends(get_db)):
     # Send email
     success, mail_msg = await send_otp_email(request.email, otp_code, request.type)
     if not success:
-        logger.warning(f"SEND_OTP: SMTP failed for {request.email}: {mail_msg}")
-        return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
-                            message="Email delivery unavailable. Your verification code is provided below.")
+        raise HTTPException(status_code=500, detail=mail_msg)
     
     return api_response(True, message=f"OTP sent to {request.email}")
 
@@ -97,12 +95,11 @@ async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)):
         await db.commit()
         logger.info(f"SIGNUP: OTP saved to database for {request.email}")
 
-        # Send email — non-blocking: if SMTP fails on HF Spaces, warn but don't block
+        # Send email
         success, mail_msg = await send_otp_email(request.email, otp_code, "signup")
         if not success:
-            logger.warning(f"SIGNUP: SMTP failed during signup for {request.email}: {mail_msg}")
-            return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
-                                message="Email delivery failed. Use the code shown here to verify.")
+            logger.error(f"SIGNUP: SMTP failed during signup for {request.email}: {mail_msg}")
+            raise HTTPException(status_code=500, detail=f"Failed to send verification email. Please check your SMTP settings.")
         
         logger.info(f"SIGNUP: Verification code sent successfully to {request.email}")
         return api_response(True, message="Verification code sent to your email")
