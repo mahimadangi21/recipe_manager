@@ -1,7 +1,16 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002/api/v1';
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  // Fallback for development
+  if (import.meta.env.DEV) return 'http://localhost:8002/api/v1';
+  // Dynamic detection for HF Spaces or other subpath deployments
+  const path = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
+  return `${window.location.origin}${path}api/v1`;
+};
+
+export const API_URL = getBaseUrl();
 export const BASE_URL = API_URL.replace(/\/api\/v1\/?$/, '');
 
 const axiosInstance = axios.create({

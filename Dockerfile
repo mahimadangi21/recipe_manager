@@ -11,8 +11,6 @@ RUN npm install
 
 # Copy source and build
 COPY frontend/ ./
-# VITE_API_URL should be relative for SPA deployment
-ENV VITE_API_URL="/api/v1"
 RUN npm run build
 
 # ---- Stage 2: Run the Python backend ----
