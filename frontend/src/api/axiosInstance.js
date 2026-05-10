@@ -3,11 +3,21 @@ import { useAuthStore } from '../store/authStore';
 
 const getBaseUrl = () => {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  // Fallback for development
   if (import.meta.env.DEV) return 'http://localhost:8002/api/v1';
-  // Dynamic detection for HF Spaces or other subpath deployments
-  const path = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
-  return `${window.location.origin}${path}api/v1`;
+
+  const { origin, pathname } = window.location;
+  
+  // If we're on Hugging Face Spaces, the pathname will be like /spaces/user/repo/
+  // On Render/Vercel/Cloud Run, it's usually just / or /recipes
+  if (pathname.includes('/spaces/')) {
+    const parts = pathname.split('/');
+    // The space root is usually parts[0..3] -> /spaces/user/repo/
+    const spaceRoot = parts.slice(0, 4).join('/') + '/';
+    return `${origin}${spaceRoot}api/v1`;
+  }
+
+  // Root deployment (Render, Fly.io, etc.)
+  return `${origin}/api/v1`;
 };
 
 export const API_URL = getBaseUrl();
