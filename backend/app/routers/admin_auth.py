@@ -28,8 +28,7 @@ async def admin_login(response: Response, login_data: dict, db: AsyncSession = D
     user = result.scalars().first()
 
     if not user:
-        # Generic error to prevent email enumeration
-        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+        raise HTTPException(status_code=401, detail=f"Admin account with email {email} not found.")
 
     # 1. Check if account is locked
     if user.account_locked_until and user.account_locked_until > datetime.now(timezone.utc):
@@ -54,7 +53,7 @@ async def admin_login(response: Response, login_data: dict, db: AsyncSession = D
             raise HTTPException(status_code=423, detail="Too many failed attempts. Account locked.")
         
         await db.commit()
-        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+        raise HTTPException(status_code=401, detail="Incorrect password for admin account.")
 
     # 4. Success: Reset failed attempts
     user.failed_login_attempts = 0

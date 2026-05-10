@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 import logging
 
 from app.database import engine, Base
@@ -18,39 +19,85 @@ logger = logging.getLogger(__name__)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 
-from app.database import engine, Base, verify_connection
+from app.database import engine, Base, AsyncSessionLocal, get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
-async def lifespan(app: FastAPI):
-    # Startup: ensure PostgreSQL connection succeeds
-    logger.info("Connecting to PostgreSQL...")
-    from sqlalchemy import text
-    connected = False
-    for i in range(5): # Retry up to 5 times
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("SELECT 1"))
-                # Create tables if they don't exist
-                await conn.run_sync(Base.metadata.create_all)
-            connected = True
-            logger.info("Successfully connected to PostgreSQL and initialized tables.")
-            break
-        except Exception as e:
-            logger.error(f"Failed to connect to database (attempt {i+1}/5): {e}")
-            import asyncio
-            await asyncio.sleep(2)
+# --- Production Safety & Seeding ---
+async def validate_db_tables():
+    """Verify that required tables exist in the database."""
+    from sqlalchemy import inspect
     
-    if not connected:
-        logger.critical("Could not establish database connection. Exiting.")
-        import sys
-        sys.exit(1)
+    async with engine.connect() as conn:
+        def check_tables(sync_conn):
+            inspector = inspect(sync_conn)
+            return inspector.get_table_names()
         
+        tables = await conn.run_sync(check_tables)
+        logger.info(f"Database connected. Found tables: {', '.join(tables)}")
+        
+        if 'users' not in tables or 'recipes' not in tables:
+            logger.warning("Required tables 'users' or 'recipes' are missing.")
+            return False
+        return True
+
+async def check_and_seed_admin():
+    """Ensure at least one admin user exists based on environment variables."""
+    from app.models.user import User
+    from app.services.auth_service import get_password_hash
+    from sqlalchemy.future import select
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.role == "admin"))
+        admin = result.scalars().first()
+        
+        if not admin:
+            logger.info(f"No admin found. Seeding default admin: {settings.ADMIN_EMAIL}")
+            new_admin = User(
+                username="admin",
+                email=settings.ADMIN_EMAIL,
+                hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
+                role="admin",
+                is_active=True
+            )
+            session.add(new_admin)
+            await session.commit()
+            logger.info("Admin seed checked: NEW ADMIN CREATED")
+        else:
+            logger.info(f"Admin seed checked: Admin already exists ({admin.email})")
+
+async def check_recipe_count():
+    """Log the count of recipes and warn if empty."""
+    from app.models.recipe import Recipe
+    from sqlalchemy import func, select
+    
+    async with AsyncSessionLocal() as session:
+        count = await session.scalar(select(func.count(Recipe.id)))
+        logger.info(f"Recipe table checked: {count} recipes found")
+        if count == 0:
+            logger.warning("No recipes found in production database")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    logger.info("Starting up RecipeManager Production Server...")
+    
+    # 1. Run Migrations / Create Tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # 2. Validate & Log
+    await validate_db_tables()
+    await check_and_seed_admin()
+    await check_recipe_count()
+    
     yield
-    # Shutdown
+    # Shutdown logic
     await engine.dispose()
+    logger.info("Shutting down...")
 
 app = FastAPI(
-    title="Recipe Manager API",
-    description="Full-stack Recipe Manager API",
+    title="RecipeManager API",
+    description="Full-stack Recipe Management System",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -86,6 +133,12 @@ app.include_router(meal_planner.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(admin_dashboard.router, prefix="/api/v1")
 app.include_router(admin_auth.router, prefix="/api/v1")
+
+@app.get("/api/recipes")
+async def get_all_recipes_legacy(db: AsyncSession = Depends(get_db)):
+    from app.routers.recipes import list_recipes
+    # We call the existing logic
+    return await list_recipes(db=db)
 
 # --- Static File Serving ---
 from fastapi.staticfiles import StaticFiles

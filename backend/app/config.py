@@ -13,7 +13,11 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
     COOKIE_DOMAIN: str | None = None
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,http://localhost:5176,http://127.0.0.1:5176,https://recipe-frontend-661692832664.us-central1.run.app"
+    CORS_ORIGINS: str = "*"
+
+    # Admin Settings
+    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_PASSWORD: str = "admin123"
 
     IMAGE_STORAGE: str = "local"
     UPLOAD_DIR: str = "uploads"
