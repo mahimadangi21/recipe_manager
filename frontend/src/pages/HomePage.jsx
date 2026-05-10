@@ -5,7 +5,7 @@ import { Search, SlidersHorizontal, Sparkles, Loader2, X } from 'lucide-react';
 import Skeleton from '../components/UI/Skeleton';
 
 const HomePage = () => {
-  const { recipes, isLoading, fetchPublicRecipes, filters, setFilters } = useRecipeStore();
+  const { recipes, isLoading, fetchRecipes, filters, setFilters } = useRecipeStore();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Debounce search
@@ -19,8 +19,8 @@ const HomePage = () => {
   }, [searchTerm, filters.search, setFilters]);
 
   useEffect(() => {
-    fetchPublicRecipes();
-  }, [filters, fetchPublicRecipes]);
+    fetchRecipes();
+  }, [filters, fetchRecipes]);
 
   const hasActiveFilters = Boolean(filters.category || filters.difficulty || filters.search);
 

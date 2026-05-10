@@ -17,7 +17,8 @@ primary_region = "bom"
   destination = "/app/data"
 
 [env]
-  DATABASE_URL = "sqlite+aiosqlite:////app/data/recipes.db"
+  DATABASE_URL = "postgresql://neondb_owner:npg_uX6figY4Knob@ep-crimson-math-akrqdohx-pooler.c-3.us-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+  DB_SSL = "true"
   UPLOAD_DIR = "/app/data/uploads"
   CORS_ORIGINS = "*"
   PORT = "7860"

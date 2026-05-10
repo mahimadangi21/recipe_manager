@@ -6,40 +6,49 @@ WORKDIR /app/frontend
 # Copy package files
 COPY frontend/package*.json ./
 
-# Use npm install instead of npm ci to handle cross-platform lockfile differences
+# Install dependencies
 RUN npm install
 
 # Copy source and build
 COPY frontend/ ./
+# VITE_API_URL should be relative for SPA deployment
 ENV VITE_API_URL="/api/v1"
 RUN npm run build
 
-# ---- Stage 2: Build the Python backend ----
-FROM python:3.11 AS backend
+# ---- Stage 2: Run the Python backend ----
+FROM python:3.11-slim AS backend
 
 WORKDIR /app
 
-# Install Python dependencies using the production requirements (no PostgreSQL/dev packages)
+# Install system dependencies for PostgreSQL and image processing
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY requirements-prod.txt .
 RUN pip install --no-cache-dir -r requirements-prod.txt
 
-# Set environment variables for the container (overrides .env file Windows paths)
-ENV DATABASE_URL="sqlite+aiosqlite:////app/data/recipes.db"
+# Set environment variables
+ENV DATABASE_URL=""
+ENV DB_SSL="true"
 ENV UPLOAD_DIR="/app/uploads"
 ENV CORS_ORIGINS="*"
-ENV SECRET_KEY="hf-spaces-recipe-manager-secret-key-change-me"
+ENV SECRET_KEY="hf-spaces-recipe-manager-default-secret"
 ENV COOKIE_SECURE="False"
 ENV COOKIE_SAMESITE="lax"
+ENV PORT=7860
 
 # Copy backend source code
 COPY backend/ ./
 
-# Create required directories
-RUN mkdir -p /app/static /app/data/uploads /app/data /app/uploads
+# Create required directories and copy frontend build
+RUN mkdir -p /app/static /app/uploads
 COPY --from=frontend-builder /app/frontend/dist /app/static/
 
 # HF Spaces requires port 7860
 EXPOSE 7860
 
-# Start the application using the PORT environment variable (required by Cloud Run)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860} --workers 1"]
+# Start the application
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]

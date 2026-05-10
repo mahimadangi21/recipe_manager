@@ -19,6 +19,11 @@ class DifficultyEnum(str, enum.Enum):
     medium = "medium"
     hard = "hard"
 
+class RecipeStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
 class Recipe(Base):
     __tablename__ = "recipes"
 
@@ -31,12 +36,14 @@ class Recipe(Base):
     cook_time_minutes = Column(Integer, nullable=True)
     category = Column(Enum(CategoryEnum), default=CategoryEnum.other)
     difficulty = Column(Enum(DifficultyEnum), default=DifficultyEnum.medium)
+    status = Column(Enum(RecipeStatus), default=RecipeStatus.pending)
     is_public = Column(Boolean, default=True)
     share_token = Column(String(36), unique=True, default=lambda: str(uuid.uuid4()))
     owner_id = Column(Integer, ForeignKey("users.id"))
+    submitted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     copied_from_id = Column(Integer, ForeignKey("recipes.id"), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="recipes", foreign_keys=[owner_id])
     ingredients = relationship("Ingredient", back_populates="recipe", cascade="all, delete-orphan", lazy="selectin")

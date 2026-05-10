@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.database import Base
 
 class OTPVerification(Base):
@@ -11,13 +11,17 @@ class OTPVerification(Base):
     type = Column(String(20), nullable=False) # 'signup' or 'reset'
     payload = Column(String(2000), nullable=True) # JSON string for pending data
     attempts = Column(Integer, default=0)
-    expires_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
     is_verified = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     @property
     def is_expired(self) -> bool:
-        return datetime.utcnow() > self.expires_at
+        now = datetime.now(timezone.utc)
+        expiry = self.expires_at
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        return now > expiry
 
     @property
     def too_many_attempts(self) -> bool:

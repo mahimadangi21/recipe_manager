@@ -16,7 +16,7 @@ from app.utils.notifications import notify_admins
 from app.models.otp import OTPVerification
 from app.schemas.otp import OTPRequest, OTPVerify, SignupRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.utils.email import send_otp_email
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import json
 from typing import List
@@ -45,7 +45,7 @@ async def send_otp(request: OTPRequest, db: AsyncSession = Depends(get_db)):
 
     # Generate 6-digit OTP
     otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
 
     # Save to DB
     otp_record = OTPVerification(
@@ -66,156 +66,217 @@ async def send_otp(request: OTPRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/signup")
 async def signup(request: SignupRequest, db: AsyncSession = Depends(get_db)):
-    # Validate unique email/username
-    result = await db.execute(select(User).where((User.email == request.email) | (User.username == request.username)))
-    if result.scalars().first():
-        raise HTTPException(status_code=409, detail="Email or username already registered")
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info(f"SIGNUP: Request received for {request.email}")
+        # Validate unique email/username
+        result = await db.execute(select(User).where((User.email == request.email) | (User.username == request.username)))
+        if result.scalars().first():
+            logger.warning(f"SIGNUP: Email or username already registered for {request.email}")
+            raise HTTPException(status_code=409, detail="Email or username already registered")
 
-    # Generate 6-digit OTP
-    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
+        # Generate 6-digit OTP
+        otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
 
-    # Store signup data in payload
-    payload = json.dumps(request.model_dump())
+        # Store signup data in payload
+        payload = json.dumps(request.model_dump())
 
-    # Save OTP with payload
-    otp_record = OTPVerification(
-        email=request.email,
-        otp=otp_code,
-        type="signup",
-        payload=payload,
-        expires_at=expires_at
-    )
-    db.add(otp_record)
-    await db.commit()
+        # Save OTP with payload
+        otp_record = OTPVerification(
+            email=request.email,
+            otp=otp_code,
+            type="signup",
+            payload=payload,
+            expires_at=expires_at
+        )
+        db.add(otp_record)
+        await db.commit()
+        logger.info(f"SIGNUP: OTP saved to database for {request.email}")
 
-    # Send email — non-blocking: if SMTP fails on HF Spaces, warn but don't block
-    success, mail_msg = await send_otp_email(request.email, otp_code, "signup")
-    if not success:
-        import logging
-        logging.warning(f"SMTP failed during signup for {request.email}: {mail_msg}")
-        # Return the OTP in the response so the user can still verify
-        # (only safe because HF Spaces doesn't have outbound SMTP)
-        return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
-                            message="Email delivery failed. Use the code shown here to verify.")
-    
-    return api_response(True, message="Verification code sent to your email")
+        # Send email — non-blocking: if SMTP fails on HF Spaces, warn but don't block
+        success, mail_msg = await send_otp_email(request.email, otp_code, "signup")
+        if not success:
+            logger.warning(f"SIGNUP: SMTP failed during signup for {request.email}: {mail_msg}")
+            return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
+                                message="Email delivery failed. Use the code shown here to verify.")
+        
+        logger.info(f"SIGNUP: Verification code sent successfully to {request.email}")
+        return api_response(True, message="Verification code sent to your email")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"SIGNUP: Server error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @router.post("/verify-otp")
 async def verify_otp(request: OTPVerify, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(OTPVerification)
-        .where(OTPVerification.email == request.email, OTPVerification.type == request.type, OTPVerification.is_verified == False)
-        .order_by(OTPVerification.created_at.desc())
-    )
-    otp_record = result.scalars().first()
-
-    if not otp_record:
-        raise HTTPException(status_code=404, detail="No active verification code found")
-
-    if otp_record.is_expired:
-        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
-
-    if otp_record.too_many_attempts:
-        raise HTTPException(status_code=400, detail="Too many failed attempts. Please request a new OTP.")
-
-    if otp_record.otp != request.otp:
-        otp_record.attempts += 1
-        await db.commit()
-        raise HTTPException(status_code=400, detail=f"Invalid OTP. {5 - otp_record.attempts} attempts remaining.")
-
-    # OTP is correct
-    otp_record.is_verified = True
-    
-    # If it's a signup flow, create the user now
-    user_data = None
-    if request.type == "signup" and otp_record.payload:
-        data = json.loads(otp_record.payload)
-        hashed_password = get_password_hash(data['password'])
-        new_user = User(
-            email=data['email'],
-            username=data['username'],
-            hashed_password=hashed_password,
-            avatar_url=data.get('avatar_url'),
-            bio=data.get('bio')
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info(f"VERIFY_OTP: Request received for {request.email}, type: {request.type}")
+        from sqlalchemy import func
+        result = await db.execute(
+            select(OTPVerification)
+            .where(
+                OTPVerification.email == request.email, 
+                OTPVerification.type == request.type, 
+                OTPVerification.is_verified == False
+            )
+            .order_by(OTPVerification.created_at.desc())
         )
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
+        otp_record = result.scalars().first()
+
+        if not otp_record:
+            logger.warning(f"VERIFY_OTP: No active verification code found for {request.email}")
+            raise HTTPException(status_code=404, detail="No active verification code found")
+
+        # Use database-native comparison or ensure Python comparison is robust
+        # We already have the record, let's check its expiry against DB time if possible, 
+        # or just use a very safe Python comparison.
+        now = datetime.now(timezone.utc)
         
-        # Notify admins
-        await notify_admins(
-            db, 
-            title="New User Registered", 
-            message=f"User {new_user.username} ({new_user.email}) has just joined the platform.",
-            type="registration"
-        )
-        user_data = {"id": new_user.id, "email": new_user.email, "username": new_user.username}
+        # Ensure otp_record.expires_at is aware
+        expiry = otp_record.expires_at
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+        
+        if now > expiry:
+            # Check if it's within a small grace period (e.g. 30 seconds) to handle clock drift
+            if (now - expiry).total_seconds() > 30:
+                logger.warning(f"VERIFY_OTP: OTP expired for {request.email}")
+                raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
 
-    await db.commit()
-    return api_response(True, data=user_data, message="Verification successful")
+        if otp_record.too_many_attempts:
+            logger.warning(f"VERIFY_OTP: Too many failed attempts for {request.email}")
+            raise HTTPException(status_code=400, detail="Too many failed attempts. Please request a new OTP.")
+
+        if otp_record.otp != request.otp.strip():
+            otp_record.attempts += 1
+            await db.commit()
+            logger.warning(f"VERIFY_OTP: Invalid OTP provided for {request.email}")
+            raise HTTPException(status_code=400, detail=f"Invalid OTP. {5 - otp_record.attempts} attempts remaining.")
+
+        # OTP is correct
+        logger.info(f"VERIFY_OTP: OTP successfully verified for {request.email}")
+        otp_record.is_verified = True
+        
+        # If it's a signup flow, create the user now
+        user_data = None
+        if request.type == "signup" and otp_record.payload:
+            data = json.loads(otp_record.payload)
+            hashed_password = get_password_hash(data['password'])
+            new_user = User(
+                email=data['email'],
+                username=data['username'],
+                hashed_password=hashed_password,
+                avatar_url=data.get('avatar_url'),
+                bio=data.get('bio')
+            )
+            db.add(new_user)
+            await db.commit()
+            await db.refresh(new_user)
+            logger.info(f"VERIFY_OTP: New user created with ID {new_user.id}")
+
+            # Notify admins
+            from app.utils.notifications import notify_admins
+            await notify_admins(
+                db,
+                title="New User Registered",
+                message=f"User {new_user.username} has just joined the platform.",
+                type="registration"
+            )
+            await db.refresh(new_user)
+            user_data = {"id": new_user.id, "email": new_user.email, "username": new_user.username}
+
+        await db.commit()
+        return api_response(True, data=user_data, message="Verification successful")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"VERIFY_OTP: Server error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    print(f"DEBUG: Forgot password requested for {request.email}")
-    result = await db.execute(select(User).where(User.email == request.email))
-    user = result.scalars().first()
-    if not user:
-        print(f"DEBUG: User not found for {request.email}")
-        raise HTTPException(status_code=404, detail="User not found")
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info(f"FORGOT_PASSWORD: Email received: {request.email}")
+        result = await db.execute(select(User).where(User.email == request.email))
+        user = result.scalars().first()
+        if not user:
+            logger.warning(f"FORGOT_PASSWORD: User not found for {request.email}")
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Generate reset OTP
-    otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
-    print(f"DEBUG: Generated OTP {otp_code} for {request.email}")
+        # Generate reset OTP
+        otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        logger.info(f"FORGOT_PASSWORD: OTP generated for {request.email}")
 
-    otp_record = OTPVerification(
-        email=request.email,
-        otp=otp_code,
-        type="reset",
-        expires_at=expires_at
-    )
-    db.add(otp_record)
-    await db.commit()
-    print(f"DEBUG: OTP saved to database for {request.email}")
+        otp_record = OTPVerification(
+            email=request.email,
+            otp=otp_code,
+            type="reset",
+            expires_at=expires_at
+        )
+        db.add(otp_record)
+        await db.commit()
+        logger.info(f"FORGOT_PASSWORD: OTP saved to database for {request.email}")
 
-    success, mail_msg = await send_otp_email(request.email, otp_code, "reset")
-    if not success:
-        import logging
-        logging.warning(f"SMTP failed during password reset for {request.email}: {mail_msg}")
-        return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
-                            message="Email delivery failed. Use the code shown here to reset your password.")
-        
-    print(f"DEBUG: OTP email sent trigger successful for {request.email}")
-    return api_response(True, message="OTP sent to your email")
+        success, mail_msg = await send_otp_email(request.email, otp_code, "reset")
+        if not success:
+            logger.error(f"FORGOT_PASSWORD: SMTP failed during password reset for {request.email}: {mail_msg}")
+            raise HTTPException(status_code=500, detail=f"Email delivery failed: {mail_msg}")
+            
+        logger.info(f"FORGOT_PASSWORD: OTP email sent successfully for {request.email}")
+        return api_response(True, message="OTP sent to your email")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"FORGOT_PASSWORD: Server error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Server error: {str(e)}")
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
-    # Verify OTP again to be sure (stateless-ish)
-    result = await db.execute(
-        select(OTPVerification)
-        .where(OTPVerification.email == request.email, OTPVerification.type == "reset", OTPVerification.is_verified == True)
-        .order_by(OTPVerification.created_at.desc())
-    )
-    otp_record = result.scalars().first()
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info(f"RESET_PASSWORD: Request received for {request.email}")
+        # Verify OTP again to be sure (stateless-ish)
+        result = await db.execute(
+            select(OTPVerification)
+            .where(OTPVerification.email == request.email, OTPVerification.type == "reset", OTPVerification.is_verified == True)
+            .order_by(OTPVerification.created_at.desc())
+        )
+        otp_record = result.scalars().first()
 
-    if not otp_record or (datetime.utcnow() - otp_record.created_at).total_seconds() > 600:
-        raise HTTPException(status_code=400, detail="Session expired. Please verify OTP again.")
+        if not otp_record or (datetime.now(timezone.utc) - otp_record.created_at).total_seconds() > 600:
+            logger.warning(f"RESET_PASSWORD: Session expired or not verified for {request.email}")
+            raise HTTPException(status_code=400, detail="Session expired. Please verify OTP again.")
 
-    # Update password
-    result = await db.execute(select(User).where(User.email == request.email))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Update password
+        result = await db.execute(select(User).where(User.email == request.email))
+        user = result.scalars().first()
+        if not user:
+            logger.warning(f"RESET_PASSWORD: User not found for {request.email}")
+            raise HTTPException(status_code=404, detail="User not found")
 
-    user.hashed_password = get_password_hash(request.new_password)
-    
-    # Mark OTP as deleted/fully used so it can't be used again
-    await db.delete(otp_record)
-    
-    await db.commit()
-    
-    return api_response(True, message="Password reset successfully")
+        user.hashed_password = get_password_hash(request.new_password)
+        logger.info(f"RESET_PASSWORD: Password updated successfully for {request.email}")
+        
+        # Mark OTP as deleted/fully used so it can't be used again
+        await db.delete(otp_record)
+        
+        await db.commit()
+        
+        return api_response(True, message="Password reset successfully")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"RESET_PASSWORD: Server error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 # Keep the original register for legacy/compatibility if needed, 
 # but we'll likely switch frontend to /signup
@@ -225,28 +286,48 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login")
 async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
-    # Check both email and username
-    result = await db.execute(
-        select(User).where((User.email == form_data.username) | (User.username == form_data.username))
-    )
-    user = result.scalars().first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        logger.info(f"LOGIN: Attempt for username/email: {form_data.username}")
+        # Check both email and username
+        result = await db.execute(
+            select(User).where((User.email == form_data.username) | (User.username == form_data.username))
+        )
+        user = result.scalars().first()
+        logger.info(f"LOGIN: DB response user found: {user is not None}")
         
-    access_token = create_access_token(data={"email": user.email})
-    refresh_token = create_refresh_token(data={"email": user.email})
-    
-    set_refresh_cookie(response, refresh_token)
-    
-    return {
-        "success": True,
-        "token": access_token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "role": user.role
+        if not user:
+            logger.warning(f"LOGIN: User not found for {form_data.username}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            
+        password_match = verify_password(form_data.password, user.hashed_password)
+        logger.info(f"LOGIN: bcrypt compare result: {password_match}")
+        
+        if not password_match:
+            logger.warning(f"LOGIN: Invalid password for {form_data.username}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
+            
+        access_token = create_access_token(data={"email": user.email})
+        refresh_token = create_refresh_token(data={"email": user.email})
+        logger.info("LOGIN: JWT generated successfully")
+        
+        set_refresh_cookie(response, refresh_token)
+        
+        return {
+            "success": True,
+            "token": access_token,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "role": user.role
+            }
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"LOGIN: Server error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Server error: {str(e)}")
 
 @router.post("/logout")
 async def logout(response: Response):
@@ -344,7 +425,11 @@ async def update_user_role(user_id: int, role_data: dict, admin_user: User = Dep
     if user.id == admin_user.id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
         
-    user.is_admin = role_data.get("is_admin", user.is_admin)
+    if role_data.get("is_admin") is True:
+        user.role = "admin"
+    elif role_data.get("is_admin") is False:
+        user.role = "user"
+        
     await db.commit()
     return api_response(True, message="User role updated")
 

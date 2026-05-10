@@ -10,7 +10,8 @@ export const adminApi = {
   getRecipes: () => axiosInstance.get('/admin/recipes'),
   deleteRecipe: (recipeId) => axiosInstance.delete(`/admin/recipes/${recipeId}`),
   
-  getSubmissions: () => axiosInstance.get('/admin/submissions/'),
-  approveSubmission: (subId) => axiosInstance.post(`/admin/submissions/${subId}/review`, { approved: true }),
-  rejectSubmission: (subId) => axiosInstance.post(`/admin/submissions/${subId}/review`, { approved: false }),
+  getSubmissions: () => axiosInstance.get('/admin/submissions'),
+  approveSubmission: (recipeId) => axiosInstance.post(`/admin/recipes/${recipeId}/approve`),
+  rejectSubmission: (recipeId) => axiosInstance.post(`/admin/recipes/${recipeId}/reject`),
+  getNotifications: () => axiosInstance.get('/admin/notifications'),
 };

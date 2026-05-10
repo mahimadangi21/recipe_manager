@@ -8,7 +8,7 @@ collection_recipes = Table(
     Base.metadata,
     Column("collection_id", Integer, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True),
     Column("recipe_id", Integer, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True),
-    Column("added_at", DateTime, default=lambda: datetime.now(timezone.utc))
+    Column("added_at", DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 )
 
 class Collection(Base):
@@ -19,7 +19,7 @@ class Collection(Base):
     description = Column(String(500), nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     is_public = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="collections")
     recipes = relationship("Recipe", secondary=collection_recipes, back_populates="collections")

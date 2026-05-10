@@ -12,7 +12,7 @@ if BACKEND_ROOT not in sys.path:
     sys.path.insert(0, BACKEND_ROOT)
 
 from app.database import Base
-from app.models import user, recipe, ingredient, image, review, collection  # noqa: F401
+from app.models import user, recipe, ingredient, image, review, collection, meal_plan, otp, notification, favorite, comment, recipe_submission  # noqa: F401
 from app.config import settings
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.

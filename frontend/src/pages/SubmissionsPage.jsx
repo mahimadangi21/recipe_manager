@@ -22,7 +22,8 @@ const SubmissionsPage = () => {
   const load = async () => {
     try {
       setLoading(true);
-      const result = await axiosInstance.get('/submissions');
+      // Fetch owned recipes to show their status
+      const result = await axiosInstance.get('/recipes', { params: { owned: true } });
       setSubmissions(result.data || []);
     } catch (err) {
       toast.error('Failed to load submissions');

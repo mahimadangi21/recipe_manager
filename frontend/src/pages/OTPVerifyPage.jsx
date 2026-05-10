@@ -33,22 +33,49 @@ const OTPVerifyPage = () => {
     return () => clearInterval(interval);
   }, [timer]);
 
-  const handleChange = (index, value) => {
-    if (isNaN(value)) return;
+  const handleChange = (index, e) => {
+    const value = e.target.value;
+    
+    // Handle multiple characters (like a paste)
+    if (value.length > 1) {
+      const pastedData = value.replace(/[^0-9]/g, '').split('').slice(0, 6 - index);
+      const newOtp = [...otp];
+      pastedData.forEach((char, i) => {
+        if (index + i < 6) newOtp[index + i] = char;
+      });
+      setOtp(newOtp);
+      
+      // Focus the last filled box or next available
+      const nextFocus = Math.min(index + pastedData.length, 5);
+      document.getElementById(`otp-${nextFocus}`)?.focus();
+      return;
+    }
+
+    // Single character input
+    if (value && !/^\d$/.test(value)) return;
+
     const newOtp = [...otp];
-    newOtp[index] = value.substring(value.length - 1);
+    newOtp[index] = value;
     setOtp(newOtp);
 
+    // Auto-focus next input
     if (value && index < 5) {
-      const nextInput = document.getElementById(`otp-${index + 1}`);
-      nextInput?.focus();
+      document.getElementById(`otp-${index + 1}`)?.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      const prevInput = document.getElementById(`otp-${index - 1}`);
-      prevInput?.focus();
+    if (e.key === 'Backspace') {
+      if (!otp[index] && index > 0) {
+        // Focus previous input on backspace if current is empty
+        const prevInput = document.getElementById(`otp-${index - 1}`);
+        prevInput?.focus();
+      } else {
+        // Clear current input
+        const newOtp = [...otp];
+        newOtp[index] = '';
+        setOtp(newOtp);
+      }
     }
   };
 
@@ -133,10 +160,12 @@ const OTPVerifyPage = () => {
                 key={index}
                 id={`otp-${index}`}
                 type="text"
-                maxLength="1"
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 value={digit}
-                onChange={(e) => handleChange(index, e.target.value)}
+                onChange={(e) => handleChange(index, e)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
+                onFocus={(e) => e.target.select()}
                 className="w-12 h-14 text-center text-2xl font-bold text-gray-900 bg-gray-50 border-2 border-gray-100 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all"
               />
             ))}

@@ -103,11 +103,11 @@ async def seed():
         result = await session.execute(select(User).filter_by(username="demo"))
         user = result.scalars().first()
         if not user:
-            user = User(username="demo", email="demo@example.com", hashed_password=get_password_hash("password123"), is_admin=False)
+            user = User(username="demo", email="demo@example.com", hashed_password=get_password_hash("password123"), role="user")
             session.add(user)
         else:
             user.hashed_password = get_password_hash("password123")
-            user.is_admin = False
+            user.role = "user"
         
         await session.commit()
         await session.refresh(user)
@@ -116,11 +116,11 @@ async def seed():
         result = await session.execute(select(User).filter_by(username="admin"))
         admin = result.scalars().first()
         if not admin:
-            admin = User(username="admin", email="admin@example.com", hashed_password=get_password_hash("admin123"), is_admin=True)
+            admin = User(username="admin", email="admin@example.com", hashed_password=get_password_hash("admin123"), role="admin")
             session.add(admin)
         else:
             admin.hashed_password = get_password_hash("admin123")
-            admin.is_admin = True
+            admin.role = "admin"
             
         await session.commit()
 

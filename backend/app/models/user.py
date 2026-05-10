@@ -15,8 +15,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     role = Column(String(20), default="user") # "user" or "admin"
     failed_login_attempts = Column(Integer, default=0)
-    account_locked_until = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    account_locked_until = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     recipes = relationship("Recipe", back_populates="owner", foreign_keys="Recipe.owner_id")
     collections = relationship("Collection", back_populates="owner")

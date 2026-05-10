@@ -19,8 +19,11 @@ export const useRecipeStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await axiosInstance.get('/recipes/', { params: get().filters });
-      set({ recipes: result.data });
+      // Backend returns { success: true, data: [...] }
+      const recipesArr = Array.isArray(result.data) ? result.data : (result.data?.data || []);
+      set({ recipes: recipesArr, totalCount: recipesArr.length });
     } catch (error) {
+      console.error('fetchRecipes Error:', error);
       set({ error: error.message });
     } finally {
       set({ isLoading: false });
@@ -31,7 +34,8 @@ export const useRecipeStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await axiosInstance.get('/recipes/', { params: { owned: true, page: 1, page_size: 100 } });
-      set({ recipes: result.data });
+      const recipesArr = Array.isArray(result.data) ? result.data : (result.data?.data || []);
+      set({ recipes: recipesArr });
     } catch (error) {
       set({ error: error.message });
     } finally {
@@ -43,7 +47,8 @@ export const useRecipeStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await axiosInstance.get('/recipes/public');
-      set({ recipes: result.data });
+      const recipesArr = Array.isArray(result.data) ? result.data : (result.data?.data || []);
+      set({ recipes: recipesArr, totalCount: recipesArr.length });
     } catch (error) {
       set({ error: error.message });
     } finally {
@@ -55,7 +60,8 @@ export const useRecipeStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await axiosInstance.get('/admin/recipes');
-      set({ recipes: result.data });
+      const recipesArr = Array.isArray(result.data) ? result.data : (result.data?.data || []);
+      set({ recipes: recipesArr });
     } catch (error) {
       set({ error: error.message });
     } finally {
@@ -212,6 +218,67 @@ export const useRecipeStore = create((set, get) => ({
       throw error;
     } finally {
       set({ isLoading: false });
+    }
+  },
+
+  // Review Actions
+  fetchReviews: async (recipeId) => {
+    try {
+      const res = await axiosInstance.get(`/recipes/${recipeId}/reviews/`);
+      return res.data;
+    } catch (error) {
+      console.error('fetchReviews Error:', error);
+      return [];
+    }
+  },
+
+  fetchReviewSummary: async (recipeId) => {
+    try {
+      const res = await axiosInstance.get(`/recipes/${recipeId}/reviews/summary`);
+      return res.data;
+    } catch (error) {
+      console.error('fetchReviewSummary Error:', error);
+      return { avg_rating: 0, review_count: 0 };
+    }
+  },
+
+  createReview: async (recipeId, reviewData) => {
+    try {
+      const res = await axiosInstance.post(`/recipes/${recipeId}/reviews/`, reviewData);
+      return res.data;
+    } catch (error) {
+      console.error('createReview Error:', error);
+      throw error;
+    }
+  },
+
+  // Comment Actions
+  fetchComments: async (recipeId) => {
+    try {
+      const res = await axiosInstance.get(`/recipes/${recipeId}/comments/`);
+      return res.data;
+    } catch (error) {
+      console.error('fetchComments Error:', error);
+      return [];
+    }
+  },
+
+  createComment: async (recipeId, commentData) => {
+    try {
+      const res = await axiosInstance.post(`/recipes/${recipeId}/comments/`, commentData);
+      return res.data;
+    } catch (error) {
+      console.error('createComment Error:', error);
+      throw error;
+    }
+  },
+
+  deleteComment: async (recipeId, commentId) => {
+    try {
+      await axiosInstance.delete(`/recipes/${recipeId}/comments/${commentId}`);
+    } catch (error) {
+      console.error('deleteComment Error:', error);
+      throw error;
     }
   }
 }));

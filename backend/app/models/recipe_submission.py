@@ -14,7 +14,7 @@ class RecipeSubmission(Base):
     status = Column(String(20), default="pending", index=True)  # pending|approved|rejected
     admin_notes = Column(String(500), nullable=True)
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    reviewed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     submitter = relationship("User", foreign_keys=[submitter_id])

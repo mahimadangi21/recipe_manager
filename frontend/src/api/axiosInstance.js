@@ -9,46 +9,60 @@ const axiosInstance = axios.create({
   withCredentials: true,
 });
 
-axiosInstance.interceptors.request.use((config) => {
-  const userToken = localStorage.getItem('token');
-  const adminToken = localStorage.getItem('adminToken');
-  
-  // Choose token based on route and role
-  const isAdminRoute = config.url.includes('/admin/');
-  const storedRole = localStorage.getItem('role');
-  
-  let token;
-  if (isAdminRoute || storedRole === 'admin') {
-    token = adminToken || userToken;
-  } else {
-    token = userToken || adminToken;
-  }
-  
-  console.log(`API Request [${config.method.toUpperCase()}] ${config.url}`, { 
-    isAdminRoute, 
-    storedRole,
-    hasAdminToken: !!adminToken, 
-    hasUserToken: !!userToken,
-    selected: (isAdminRoute || storedRole === 'admin') ? 'admin' : 'user'
-  });
+axiosInstance.interceptors.request.use(
+  (config) => {
+    const userToken = localStorage.getItem('token');
+    const adminToken = localStorage.getItem('adminToken');
+    
+    // Choose token based on route and role
+    const isAdminRoute = config.url.includes('/admin/');
+    const storedRole = localStorage.getItem('role');
+    
+    let token;
+    if (isAdminRoute || storedRole === 'admin') {
+      token = adminToken || userToken;
+    } else {
+      token = userToken || adminToken;
+    }
+    
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, {
+      headers: config.headers,
+      data: config.data
+    });
+    
+    return config;
+  },
+  (error) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
 axiosInstance.interceptors.response.use(
   (response) => {
+    console.log(`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+    
     // If the response follows our standard structure, extract the actual data.
     if (response.data && typeof response.data === 'object' && 'success' in response.data) {
       if (response.data.success) {
         return response.data; // We'll return the whole response.data so we can access .data and .message
       }
+      return Promise.reject(response.data);
     }
-    return response;
+    return response.data;
   },
   async (error) => {
+    console.error(`[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+      fullError: error
+    });
+
     const originalRequest = error.config;
     const requestUrl = originalRequest?.url || '';
     const isAuthRequest =
@@ -59,6 +73,16 @@ axiosInstance.interceptors.response.use(
       requestUrl.includes('/admin/login') ||
       requestUrl.includes('/admin/logout');
     const isAdminRequest = requestUrl.includes('/admin/');
+    
+    if (error.response) {
+      console.error("API Error Response Data:", error.response.data);
+      console.error("API Error Status:", error.response.status);
+      console.error("API Error Headers:", error.response.headers);
+    } else if (error.request) {
+      console.error("API Error Request (No Response):", error.request);
+    } else {
+      console.error("API Error Message:", error.message);
+    }
     
     if (
       error.response?.status === 401 &&

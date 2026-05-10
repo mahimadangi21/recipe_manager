@@ -127,7 +127,7 @@ const AdminPage = () => {
           <StatCard icon={Layers} label="Collections" value={analytics?.collections} color="bg-blue-100 text-blue-600" />
           <StatCard icon={Star} label="Reviews" value={analytics?.reviews} color="bg-yellow-100 text-yellow-600" />
           <StatCard icon={MessageSquare} label="Comments" value={analytics?.comments} color="bg-green-100 text-green-600" />
-          <StatCard icon={FileText} label="Pending" value={analytics?.pending_submissions} color="bg-red-100 text-red-600" />
+          <StatCard icon={FileText} label="Pending" value={analytics?.pendingSubmissions} color="bg-red-100 text-red-600" />
         </div>
       )}
 
@@ -177,7 +177,7 @@ const AdminPage = () => {
                 <FileText className="h-5 w-5 text-red-600" />
                 <div>
                   <p className="font-semibold text-gray-900 text-sm">Review Submissions</p>
-                  <p className="text-xs text-gray-500">{analytics?.pending_submissions} pending review</p>
+                  <p className="text-xs text-gray-500">{analytics?.pendingSubmissions} pending review</p>
                 </div>
               </button>
               <button onClick={() => setActiveTab('users')} className="w-full flex items-center gap-3 p-4 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors text-left">
@@ -352,7 +352,7 @@ const AdminPage = () => {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Recipe Submissions</h3>
-                <p className="text-sm text-gray-500">{analytics?.pending_submissions} awaiting review</p>
+                <p className="text-sm text-gray-500">{analytics?.pendingSubmissions} awaiting review</p>
               </div>
             </div>
             <button

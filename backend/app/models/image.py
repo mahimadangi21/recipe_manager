@@ -11,6 +11,6 @@ class RecipeImage(Base):
     url = Column(String(1000), nullable=False)
     is_primary = Column(Boolean, default=False)
     order = Column(Integer, default=0)
-    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    uploaded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     recipe = relationship("Recipe", back_populates="images")

@@ -16,7 +16,9 @@ import {
   CheckCircle2,
   XCircle,
   MoreVertical,
-  Loader2
+  Loader2,
+  Bell,
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { adminApi } from '../api/adminApi';
@@ -28,12 +30,26 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
   const [users, setUsers] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const filteredRecipes = recipes.filter(r => 
+    filterStatus === 'all' ? true : r.status === filterStatus
+  );
 
   useEffect(() => {
     fetchData();
-  }, []);
+    
+    // Auto-refresh notifications every 30 seconds
+    const interval = setInterval(() => {
+      fetchData(); // Refresh all data to keep stats up to date
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -45,7 +61,8 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
         setStats(res.data);
       } catch (e) {
         console.error('Analytics failed:', e);
-        toast.error('Failed to load metrics');
+        const errorMsg = e.response?.data?.message || e.response?.data?.detail || e.message || 'Failed to load metrics';
+        toast.error(errorMsg);
       }
     };
 
@@ -55,7 +72,8 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
         setUsers(res.data || []);
       } catch (e) {
         console.error('Users failed:', e);
-        toast.error('Failed to load users');
+        const errorMsg = e.response?.data?.message || e.response?.data?.detail || e.message || 'Failed to load users';
+        toast.error(errorMsg);
       }
     };
 
@@ -65,7 +83,8 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
         setRecipes(res.data || []);
       } catch (e) {
         console.error('Recipes failed:', e);
-        toast.error('Failed to load recipes');
+        const errorMsg = e.response?.data?.message || e.response?.data?.detail || e.message || 'Failed to load recipes';
+        toast.error(errorMsg);
       }
     };
 
@@ -75,18 +94,31 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
         setSubmissions(res.data || []);
       } catch (e) {
         console.error('Submissions failed:', e);
-        toast.error('Failed to load submissions');
       }
     };
 
-    await Promise.allSettled([
-      fetchAnalytics(),
-      fetchUsers(),
-      fetchRecipes(),
-      fetchSubmissions()
-    ]);
-    
-    setLoading(false);
+    const fetchNotifications = async () => {
+      try {
+        const res = await adminApi.getNotifications();
+        setNotifications(res.data || []);
+      } catch (e) {
+        console.error('Notifications failed:', e);
+      }
+    };
+
+    try {
+      await Promise.allSettled([
+        fetchAnalytics(),
+        fetchUsers(),
+        fetchRecipes(),
+        fetchSubmissions(),
+        fetchNotifications()
+      ]);
+    } catch (e) {
+      console.error('Data fetch critical error:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleToggleUser = async (userId) => {
@@ -156,6 +188,15 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
     }
   };
 
+  const handleMarkAsRead = async (id) => {
+    try {
+      await axiosInstance.patch(`/notifications/${id}/read`);
+      setNotifications(notifications.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch (e) {
+      toast.error('Failed to mark as read');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -180,14 +221,74 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
               </h1>
               <p className="text-gray-500 text-sm mt-1">Real-time platform metrics and management</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={fetchData}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all flex items-center gap-2"
-              >
-                <Clock className="h-4 w-4" />
-                Refresh Data
-              </button>
+            <div className="flex items-center gap-4 relative">
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={fetchData}
+                  disabled={loading}
+                  className="px-4 py-2 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Refresh Data
+                </button>
+              </div>
+              
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2 rounded-xl border transition-all relative ${showNotifications ? 'text-orange-600 bg-orange-50 border-orange-100' : 'text-gray-400 hover:text-orange-500 bg-white border-gray-100'}`}
+                >
+                  <Bell className="h-6 w-6" />
+                  {notifications.filter(n => !n.is_read).length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-3 h-3 bg-red-500 border-2 border-white rounded-full" />
+                  )}
+                </button>
+
+                {/* Notifications Dropdown */}
+                {showNotifications && (
+                  <div className="absolute top-full right-0 mt-3 w-80 bg-white rounded-3xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                    <div className="p-4 border-b border-gray-50 flex items-center justify-between">
+                      <h4 className="font-bold text-gray-900 text-sm">Notifications</h4>
+                      <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest">{notifications.filter(n => !n.is_read).length} Unread</span>
+                    </div>
+                    <div className="max-h-[400px] overflow-y-auto">
+                      {notifications.length > 0 ? (
+                        notifications.map(n => (
+                          <div 
+                            key={n.id} 
+                            onClick={() => !n.is_read && handleMarkAsRead(n.id)}
+                            className={`p-4 border-b border-gray-50 last:border-0 cursor-pointer transition-colors ${n.is_read ? 'opacity-60' : 'bg-orange-50/30 hover:bg-orange-50'}`}
+                          >
+                            <div className="flex gap-3">
+                              <div className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${n.is_read ? 'bg-orange-500' : 'bg-gray-300'}`} />
+                              <div>
+                                <p className="text-xs font-bold text-gray-800">{n.title}</p>
+                                <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">{n.message}</p>
+                                <p className="text-[9px] text-gray-400 mt-2">{new Date(n.created_at).toLocaleTimeString()}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-10 text-center">
+                          <Bell className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+                          <p className="text-xs text-gray-400 font-medium">All caught up!</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 pl-4 border-l border-gray-100">
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-bold text-gray-900">Admin User</p>
+                  <p className="text-[10px] text-gray-400 font-medium tracking-tighter">COMMAND CENTER</p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold border-2 border-white shadow-sm">
+                  UN
+                </div>
+              </div>
             </div>
           </div>
 
@@ -197,7 +298,8 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
               { id: 'overview', label: 'Overview', path: '/admin/dashboard' },
               { id: 'users', label: 'Users', path: '/admin/users' },
               { id: 'recipes', label: 'Recipes', path: '/admin/recipes' },
-              { id: 'submissions', label: 'Submissions', path: '/admin/submissions' }
+              { id: 'submissions', label: 'Submissions', path: '/admin/submissions' },
+              { id: 'notifications', label: 'Notifications', path: '/admin/notifications', badge: notifications.some(n => !n.is_read) }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -206,7 +308,12 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
                   activeTab === tab.id ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
-                {tab.label}
+                <div className="flex items-center gap-2">
+                  {tab.label}
+                  {tab.badge && (
+                    <span className="flex h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
+                  )}
+                </div>
                 {activeTab === tab.id && (
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-600 rounded-t-full" />
                 )}
@@ -220,11 +327,13 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
         {activeTab === 'overview' && (
           <div className="space-y-8">
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
               <StatCard title="Total Users" value={stats?.totalUsers} icon={<Users />} color="blue" />
-              <StatCard title="Live Recipes" value={stats?.totalRecipes} icon={<BookOpen />} color="orange" />
-              <StatCard title="Pending Approvals" value={stats?.pendingReviews} icon={<MessageSquare />} color="amber" />
-              <StatCard title="Platform Engagement" value={stats?.engagement} icon={<TrendingUp />} color="purple" />
+              <StatCard title="All Recipes" value={stats?.totalRecipes} icon={<BookOpen />} color="orange" />
+              <StatCard title="Approved" value={stats?.approvedRecipes} icon={<CheckCircle2 />} color="green" />
+              <StatCard title="Pending" value={stats?.pendingSubmissions} icon={<MessageSquare />} color="amber" />
+              <StatCard title="Rejected" value={stats?.rejectedRecipes} icon={<XCircle />} color="red" />
+              <StatCard title="Engagement" value={stats?.engagement} icon={<TrendingUp />} color="purple" />
             </div>
 
             {/* Recent Activity */}
@@ -243,7 +352,7 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
                         </div>
                         <div>
                           <p className="font-bold text-gray-900">{sub.title}</p>
-                          <p className="text-xs text-gray-500">Submitted {new Date(sub.created_at).toLocaleDateString()}</p>
+                          <p className="text-xs text-gray-500">By {sub.submitter_name || 'Unknown'} · {new Date(sub.created_at).toLocaleDateString()}</p>
                         </div>
                       </div>
                       <ChevronRight className="h-5 w-5 text-gray-300" />
@@ -266,7 +375,12 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
                           {user.username?.[0]}
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900">{user.username}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-gray-900">{user.username}</p>
+                            {(new Date() - new Date(user.created_at)) / (1000 * 60 * 60) < 24 && (
+                              <span className="px-1.5 py-0.5 bg-green-100 text-[8px] font-black text-green-700 uppercase rounded border border-green-200">New</span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500">{user.email}</p>
                         </div>
                       </div>
@@ -315,7 +429,12 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
                             {user.username?.[0]}
                           </div>
                           <div>
-                            <p className="font-bold text-gray-900">{user.username}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-gray-900">{user.username}</p>
+                              {(new Date() - new Date(user.created_at)) / (1000 * 60 * 60) < 24 && (
+                                <span className="px-2 py-0.5 bg-green-500 text-[10px] font-black text-white uppercase rounded-lg shadow-sm shadow-green-100">New</span>
+                              )}
+                            </div>
                             <p className="text-xs text-gray-500">{user.email}</p>
                           </div>
                         </div>
@@ -369,6 +488,16 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
             <div className="p-8 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900">Platform Recipes</h3>
               <div className="flex items-center gap-3">
+                <select 
+                  className="bg-gray-50 border-none rounded-xl text-sm px-4 py-2 focus:ring-2 focus:ring-orange-500/20 outline-none"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="all">All Status</option>
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                </select>
                 <button 
                   onClick={() => navigate('/recipes/new')}
                   className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-orange-200 hover:bg-orange-700 transition-all"
@@ -378,12 +507,12 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-8">
-              {recipes.map((recipe) => (
+              {filteredRecipes.map((recipe) => (
                 <div key={recipe.id} className="group bg-white rounded-[2rem] border border-gray-100 hover:border-orange-200 transition-all overflow-hidden shadow-sm hover:shadow-md">
                   {/* Image Preview */}
                   <div className="relative h-48 bg-gray-100 overflow-hidden">
                     <img 
-                      src={recipe.images?.[0]?.url.startsWith('http') ? recipe.images[0].url : `http://localhost:8001${recipe.images?.[0]?.url}`} 
+                      src={recipe.images?.[0]?.url.startsWith('http') ? recipe.images[0].url : `http://localhost:8000${recipe.images?.[0]?.url}`} 
                       alt={recipe.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?q=80&w=1000'; }}
@@ -473,6 +602,79 @@ const AdminDashboardPage = ({ activeTab = 'overview' }) => {
             </div>
           </div>
         )}
+
+
+
+        {activeTab === 'notifications' && (
+          <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-8 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Platform Notifications</h3>
+                <p className="text-sm text-gray-500 mt-1">Audit log of system events and user actions</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={async () => {
+                    try {
+                      await axiosInstance.post('/notifications/clear-all');
+                      setNotifications([]);
+                      toast.success('All notifications cleared');
+                    } catch (e) {
+                      toast.error('Failed to clear notifications');
+                    }
+                  }}
+                  className="px-4 py-2 text-gray-500 hover:text-red-600 text-sm font-bold transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {notifications.length > 0 ? (
+                notifications.map((n) => (
+                  <div key={n.id} className={`p-6 flex items-center justify-between hover:bg-gray-50/50 transition-colors ${n.is_read ? 'opacity-75' : 'bg-orange-50/20'}`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`p-3 rounded-2xl ${n.is_read ? 'bg-gray-100 text-gray-400' : 'bg-orange-100 text-orange-600'}`}>
+                        <Bell className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-bold text-gray-900 ${n.is_read ? '' : 'text-orange-900'}`}>{n.title}</p>
+                          {!n.is_read && <span className="px-2 py-0.5 rounded-full bg-orange-500 text-[10px] text-white font-bold uppercase tracking-wider">New</span>}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1">{n.message}</p>
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wider flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> {new Date(n.created_at).toLocaleString()}
+                          </span>
+                          <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wider flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3" /> {n.type}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    {!n.is_read && (
+                      <button 
+                        onClick={() => handleMarkAsRead(n.id)}
+                        className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:border-orange-500 hover:text-orange-600 transition-all shadow-sm"
+                      >
+                        Mark as Read
+                      </button>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="py-20 text-center">
+                  <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Bell className="h-10 w-10 text-gray-300" />
+                  </div>
+                  <h4 className="text-lg font-bold text-gray-900">No Notifications</h4>
+                  <p className="text-gray-500 mt-2">The platform audit log is currently empty.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -483,7 +685,9 @@ const StatCard = ({ title, value, icon, color }) => {
     blue: 'bg-blue-50 text-blue-600 border-blue-100',
     orange: 'bg-orange-50 text-orange-600 border-orange-100',
     amber: 'bg-amber-50 text-amber-600 border-amber-100',
-    purple: 'bg-purple-50 text-purple-600 border-purple-100'
+    purple: 'bg-purple-50 text-purple-600 border-purple-100',
+    green: 'bg-green-50 text-green-600 border-green-100',
+    red: 'bg-red-50 text-red-600 border-red-100'
   };
 
   return (

@@ -6,7 +6,7 @@ import uuid
 
 from app.database import get_db
 from app.models.user import User
-from app.models.recipe import Recipe as RecipeModel, CategoryEnum, DifficultyEnum
+from app.models.recipe import Recipe as RecipeModel, CategoryEnum, DifficultyEnum, RecipeStatus
 from app.models.ingredient import Ingredient as IngredientModel
 from app.schemas.recipe import RecipeCreate, RecipeUpdate, RecipeResponse
 from app.middleware.auth_middleware import get_current_user, get_current_admin_user
@@ -21,7 +21,11 @@ router = APIRouter(prefix="/recipes", tags=["Recipes"])
 async def list_public_recipes(
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(RecipeModel).where(RecipeModel.is_public == True).order_by(RecipeModel.created_at.desc())
+    # Public recipes must be approved and marked public
+    query = select(RecipeModel).where(
+        RecipeModel.status == RecipeStatus.approved,
+        RecipeModel.is_public == True
+    ).order_by(RecipeModel.created_at.desc())
     result = await db.execute(query)
     recipes = result.scalars().all()
     return api_response(True, data=[RecipeResponse.model_validate(r).model_dump() for r in recipes])
@@ -70,20 +74,31 @@ async def list_recipes(
         query = query.where(RecipeModel.cook_time_minutes <= max_cook_time)
         
     if current_user:
-        if favorites:
-            # Join with favorites table to get only favorited recipes
+        if current_user.is_admin:
+            # Admin sees everything (including rejected)
+            pass
+        elif favorites:
+            # Join with favorites table
             query = query.join(Favorite, Favorite.recipe_id == RecipeModel.id).where(Favorite.user_id == current_user.id)
         elif owned:
+            # User sees all their own recipes (pending/approved/rejected)
             query = query.where(RecipeModel.owner_id == current_user.id)
         else:
-            query = query.where(or_(RecipeModel.is_public == True, RecipeModel.owner_id == current_user.id))
+            # User sees all approved public recipes OR their own recipes
+            from sqlalchemy import and_
+            query = query.where(or_(
+                and_(RecipeModel.status == RecipeStatus.approved, RecipeModel.is_public == True),
+                RecipeModel.owner_id == current_user.id
+            ))
     else:
-        query = query.where(RecipeModel.is_public == True)
-        if favorites or owned:
-            raise HTTPException(status_code=401, detail="Must be logged in to filter by favorites or owned")
-            
+        # Non-logged in users only see approved public recipes
+        query = query.where(RecipeModel.status == RecipeStatus.approved, RecipeModel.is_public == True)
+
     query = query.order_by(RecipeModel.created_at.desc())
-    query = query.offset((page - 1) * page_size).limit(page_size)
+    
+    # User requested to remove pagination limit to see "all recipes"
+    # query = query.offset((page - 1) * page_size).limit(page_size)
+    
     result = await db.execute(query)
     recipes = result.scalars().all()
     
@@ -114,7 +129,9 @@ async def create_recipe(recipe: RecipeCreate, current_user: User = Depends(get_c
         category=recipe.category,
         difficulty=recipe.difficulty,
         is_public=recipe.is_public,
-        owner_id=current_user.id
+        status="approved" if current_user.is_admin else "pending",
+        owner_id=current_user.id,
+        submitted_by=current_user.id
     )
     
     for ing in recipe.ingredients:
@@ -124,6 +141,17 @@ async def create_recipe(recipe: RecipeCreate, current_user: User = Depends(get_c
     db.add(db_recipe)
     await db.commit()
     await db.refresh(db_recipe)
+    
+    # Notify admins of new submission
+    if not current_user.is_admin:
+        from app.utils.notifications import notify_admins
+        await notify_admins(
+            db,
+            title="New Recipe Submitted",
+            message=f"User {current_user.username} submitted a new recipe for approval: {db_recipe.title}",
+            type="new_recipe_submitted",
+            recipe_id=db_recipe.id
+        )
     
     # Notify all users if admin adds a public recipe
     if current_user.is_admin and db_recipe.is_public:
@@ -172,8 +200,11 @@ async def update_recipe(id: int, recipe: RecipeUpdate, current_user: User = Depe
     if not db_recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
         
-    if not current_user.is_admin and db_recipe.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only admins or owners can update recipes")
+    if not current_user.is_admin:
+        if db_recipe.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Only admins or owners can update recipes")
+        if db_recipe.status == RecipeStatus.approved:
+            raise HTTPException(status_code=403, detail="Cannot edit an approved recipe. Please contact admin.")
         
     update_data = recipe.model_dump(exclude_unset=True)
     ingredients_data = update_data.pop("ingredients", None)
@@ -212,8 +243,11 @@ async def delete_recipe(id: int, current_user: User = Depends(get_current_user),
     if not db_recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
         
-    if not current_user.is_admin and db_recipe.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only admins or owners can delete recipes")
+    if not current_user.is_admin:
+        if db_recipe.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Only admins or owners can delete recipes")
+        if db_recipe.status == RecipeStatus.approved:
+            raise HTTPException(status_code=403, detail="Cannot delete an approved recipe. Please contact admin.")
         
     await db.delete(db_recipe)
     await db.commit()

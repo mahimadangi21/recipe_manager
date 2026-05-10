@@ -223,9 +223,14 @@ const CreateRecipePage = () => {
         </div>
         
         {/* Visibility */}
-        <div className="flex items-center gap-2 pt-6 border-t border-gray-100">
-          <input type="checkbox" id="is_public" {...register('is_public')} className="h-5 w-5 text-orange-500 focus:ring-orange-500 border-gray-300 rounded" />
-          <label htmlFor="is_public" className="text-gray-900 font-medium">Make this recipe public</label>
+        <div className="pt-6 border-t border-gray-100 space-y-2">
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="is_public" {...register('is_public')} className="h-5 w-5 text-orange-500 focus:ring-orange-500 border-gray-300 rounded" />
+            <label htmlFor="is_public" className="text-gray-900 font-medium">Make this recipe public</label>
+          </div>
+          <p className="text-xs text-gray-500 pl-7 italic">
+            Note: Public recipes are submitted as requests and will be visible once approved by an administrator.
+          </p>
         </div>
 
         <div className="pt-6 flex justify-end gap-3">

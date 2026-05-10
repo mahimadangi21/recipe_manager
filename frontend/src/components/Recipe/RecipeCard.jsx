@@ -74,6 +74,13 @@ const RecipeCard = ({ recipe }) => {
             <span className="bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-semibold px-2.5 py-1 rounded-full capitalize shadow-sm">
               {recipe.category}
             </span>
+            {recipe.status && recipe.status !== 'approved' && (
+              <span className={`backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shadow-sm ${
+                recipe.status === 'pending' ? 'bg-amber-500/90' : 'bg-red-500/90'
+              }`}>
+                {recipe.status}
+              </span>
+            )}
           </div>
         </div>
 

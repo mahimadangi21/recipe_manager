@@ -1,38 +1,45 @@
 import asyncio
-import aiosqlite
 import bcrypt
-from app.config import settings
+from sqlalchemy import select
+from app.database import engine, AsyncSessionLocal
+from app.models.user import User
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def get_password_hash(password: str) -> str:
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 async def create_admin():
-    db_path = settings.DATABASE_URL.split("///")[-1]
     email = "admin@recipemanager.com"
     username = "admin_official"
     password = "Admin123!"
     hashed_pw = get_password_hash(password)
     
-    async with aiosqlite.connect(db_path) as db:
+    async with AsyncSessionLocal() as session:
         # Check if exists
-        async with db.execute("SELECT id FROM users WHERE email = ?", (email,)) as cursor:
-            user = await cursor.fetchone()
+        result = await session.execute(select(User).where(User.email == email))
+        db_user = result.scalars().first()
             
-        if user:
-            await db.execute(
-                "UPDATE users SET hashed_password = ?, role = 'admin', is_active = 1 WHERE email = ?",
-                (hashed_pw, email)
-            )
-            print(f"Updated existing admin: {email}")
+        if db_user:
+            db_user.hashed_password = hashed_pw
+            db_user.role = 'admin'
+            db_user.is_active = True
+            logger.info(f"Updated existing admin: {email}")
         else:
-            await db.execute(
-                "INSERT INTO users (email, username, hashed_password, role, is_active) VALUES (?, ?, ?, ?, 1)",
-                (email, username, hashed_pw, "admin")
+            new_admin = User(
+                email=email,
+                username=username,
+                hashed_password=hashed_pw,
+                role="admin",
+                is_active=True
             )
-            print(f"Created new admin: {email}")
+            session.add(new_admin)
+            logger.info(f"Created new admin: {email}")
             
-        await db.commit()
+        await session.commit()
 
 if __name__ == "__main__":
     asyncio.run(create_admin())

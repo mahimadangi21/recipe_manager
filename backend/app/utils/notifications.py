@@ -8,13 +8,15 @@ async def create_notification(
     user_id: int,
     title: str,
     message: str,
-    type: str = "system"
+    type: str = "system",
+    recipe_id: int = None
 ):
     notification = Notification(
         user_id=user_id,
         title=title,
         message=message,
-        type=type
+        type=type,
+        recipe_id=recipe_id
     )
     db.add(notification)
     await db.commit()
@@ -24,7 +26,8 @@ async def notify_admins(
     db: AsyncSession,
     title: str,
     message: str,
-    type: str = "admin_alert"
+    type: str = "admin_alert",
+    recipe_id: int = None
 ):
     result = await db.execute(select(User).where(User.role == "admin"))
     admins = result.scalars().all()
@@ -33,7 +36,8 @@ async def notify_admins(
             user_id=admin.id,
             title=title,
             message=message,
-            type=type
+            type=type,
+            recipe_id=recipe_id
         )
         db.add(notification)
     await db.commit()
@@ -42,7 +46,8 @@ async def notify_all_users(
     db: AsyncSession,
     title: str,
     message: str,
-    type: str = "broadcast"
+    type: str = "broadcast",
+    recipe_id: int = None
 ):
     result = await db.execute(select(User))
     users = result.scalars().all()
@@ -51,7 +56,8 @@ async def notify_all_users(
             user_id=user.id,
             title=title,
             message=message,
-            type=type
+            type=type,
+            recipe_id=recipe_id
         )
         db.add(notification)
     await db.commit()

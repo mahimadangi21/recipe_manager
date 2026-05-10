@@ -18,10 +18,30 @@ logger = logging.getLogger(__name__)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 
+from app.database import engine, Base, verify_connection
+
 async def lifespan(app: FastAPI):
-    # Startup: ensure tables exist for local/dev SQLite runs.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Startup: ensure PostgreSQL connection succeeds
+    logger.info("Connecting to PostgreSQL...")
+    from sqlalchemy import text
+    connected = False
+    for i in range(5): # Retry up to 5 times
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("SELECT 1"))
+            connected = True
+            logger.info("Successfully connected to PostgreSQL.")
+            break
+        except Exception as e:
+            logger.error(f"Failed to connect to database (attempt {i+1}/5): {e}")
+            import asyncio
+            await asyncio.sleep(2)
+    
+    if not connected:
+        logger.critical("Could not establish database connection. Exiting.")
+        import sys
+        sys.exit(1)
+        
     yield
     # Shutdown
     await engine.dispose()
@@ -48,7 +68,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "status_code": 500},
+        content={"detail": str(exc), "status_code": 500},
     )
 
 app.include_router(auth.router, prefix="/api/v1")

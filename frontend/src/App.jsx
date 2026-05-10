@@ -75,6 +75,7 @@ function App() {
               <Route path="/admin/recipes" element={<AdminDashboardPage activeTab="recipes" />} />
               <Route path="/admin/users" element={<AdminDashboardPage activeTab="users" />} />
               <Route path="/admin/submissions" element={<AdminDashboardPage activeTab="submissions" />} />
+              <Route path="/admin/notifications" element={<AdminDashboardPage activeTab="notifications" />} />
               <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="/admin/ops" element={<AdminOpsPage />} />
             </Route>

@@ -37,6 +37,7 @@ class RecipeBase(BaseModel):
     category: CategoryEnum = CategoryEnum.other
     difficulty: DifficultyEnum = DifficultyEnum.medium
     is_public: bool = True
+    status: str = "pending"
 
 class RecipeCreate(RecipeBase):
     ingredients: List[IngredientCreate]
@@ -58,7 +59,8 @@ class RecipeResponse(RecipeBase):
     is_favorite: bool = False
     share_token: str
     owner_id: Optional[int] = None
-    copied_from_id: Optional[int]
+    submitted_by: Optional[int] = None
+    copied_from_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     ingredients: List[IngredientResponse]

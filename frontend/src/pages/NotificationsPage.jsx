@@ -32,11 +32,15 @@ const NotificationsPage = () => {
     switch (type) {
       case 'submission':
       case 'submission_review':
+      case 'new_recipe_submitted':
         return { bg: 'bg-blue-50', icon: <CheckCircle className="h-5 w-5 text-blue-500" /> };
       case 'registration':
         return { bg: 'bg-purple-50', icon: <Info className="h-5 w-5 text-purple-500" /> };
       case 'new_recipe':
+      case 'recipe_approved':
         return { bg: 'bg-orange-50', icon: <AlertCircle className="h-5 w-5 text-orange-500" /> };
+      case 'recipe_rejected':
+        return { bg: 'bg-red-50', icon: <XCircle className="h-5 w-5 text-red-500" /> };
       case 'favorite_update':
         return { bg: 'bg-amber-50', icon: <CheckCircle2 className="h-5 w-5 text-amber-500" /> };
       default:
