@@ -31,6 +31,7 @@ async def seed_rich_recipes():
             category=CategoryEnum.dinner,
             difficulty=DifficultyEnum.medium,
             is_public=True,
+            status="approved",
             owner_id=admin.id,
             share_token=str(uuid.uuid4())
         )
@@ -59,6 +60,7 @@ async def seed_rich_recipes():
             category=CategoryEnum.lunch,
             difficulty=DifficultyEnum.easy,
             is_public=True,
+            status="approved",
             owner_id=admin.id,
             share_token=str(uuid.uuid4())
         )

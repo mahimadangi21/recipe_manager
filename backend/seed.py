@@ -144,6 +144,7 @@ async def seed():
                 category=data["cat"],
                 difficulty=data["diff"],
                 is_public=True,
+                status="approved",
                 owner_id=user.id,
                 share_token=str(uuid.uuid4())
             )
