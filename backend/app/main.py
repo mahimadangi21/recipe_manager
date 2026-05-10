@@ -29,8 +29,10 @@ async def lifespan(app: FastAPI):
         try:
             async with engine.begin() as conn:
                 await conn.execute(text("SELECT 1"))
+                # Create tables if they don't exist
+                await conn.run_sync(Base.metadata.create_all)
             connected = True
-            logger.info("Successfully connected to PostgreSQL.")
+            logger.info("Successfully connected to PostgreSQL and initialized tables.")
             break
         except Exception as e:
             logger.error(f"Failed to connect to database (attempt {i+1}/5): {e}")
