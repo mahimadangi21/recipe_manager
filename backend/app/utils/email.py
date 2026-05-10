@@ -57,6 +57,7 @@ async def send_otp_email(email: str, otp: str, type: str = "signup"):
         return True, "Mock email logged to console (SMTP credentials missing)"
 
     try:
+        import asyncio
         message = MessageSchema(
             subject=subject,
             recipients=[email],
@@ -65,11 +66,19 @@ async def send_otp_email(email: str, otp: str, type: str = "signup"):
         )
         conf = get_mail_config()
         fm = FastMail(conf)
-        await fm.send_message(message)
         
-        print("EMAIL LOG: [SUCCESS] Email sent successfully via SMTP.")
-        print("="*50 + "\n")
-        return True, "Email sent successfully"
+        # Add a timeout for SMTP operations (crucial for HF Spaces where ports might be blocked)
+        try:
+            await asyncio.wait_for(fm.send_message(message), timeout=10.0)
+            print("EMAIL LOG: [SUCCESS] Email sent successfully via SMTP.")
+            print("="*50 + "\n")
+            return True, "Email sent successfully"
+        except asyncio.TimeoutError:
+            error_msg = "SMTP TIMEOUT: Server took too long to respond (possibly blocked port 587)"
+            print(f"EMAIL LOG: [FAILURE] {error_msg}")
+            print("="*50 + "\n")
+            return False, error_msg
+            
     except Exception as e:
         error_msg = f"SMTP ERROR: {str(e)}"
         print(f"EMAIL LOG: [FAILURE] {error_msg}")

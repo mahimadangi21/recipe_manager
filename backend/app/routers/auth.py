@@ -60,7 +60,9 @@ async def send_otp(request: OTPRequest, db: AsyncSession = Depends(get_db)):
     # Send email
     success, mail_msg = await send_otp_email(request.email, otp_code, request.type)
     if not success:
-        raise HTTPException(status_code=500, detail=mail_msg)
+        logger.warning(f"SEND_OTP: SMTP failed for {request.email}: {mail_msg}")
+        return api_response(True, data={"otp_hint": otp_code, "email_failed": True},
+                            message="Email delivery unavailable. Your verification code is provided below.")
     
     return api_response(True, message=f"OTP sent to {request.email}")
 
